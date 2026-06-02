@@ -1,27 +1,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
-  getAuth,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  updateProfile
+  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  signOut, onAuthStateChanged, updateProfile
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
-  getFirestore,
-  collection,
-  addDoc,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  doc,
-  setDoc,
-  getDoc,
-  serverTimestamp
+  getFirestore, collection, addDoc, getDocs, query, where,
+  orderBy, doc, setDoc, getDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// Firebase-konfiguration
 const firebaseConfig = {
   apiKey: "AIzaSyBXeoBhghAFZjnRYngQ19TacJiWIUdKJWY",
   authDomain: "summerpractice-2026.firebaseapp.com",
@@ -34,287 +20,222 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-
 let currentUser = null;
 
 // ─── AUTH STATE ───────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
   if (user) {
-    currentUser = user;
-    const name = user.displayName || user.email.split("@")[0];
-    document.getElementById("nav-username").textContent = name;
-    document.getElementById("welcome-name").textContent = name;
+    const snap = await getDoc(doc(db, "users", user.uid));
+    currentUser = { uid: user.uid, ...snap.data() };
+    document.getElementById("nav-username").textContent = currentUser.name;
+    document.getElementById("welcome-name").textContent = currentUser.name;
+    document.getElementById("admin-nav-btn").style.display = currentUser.role === "admin" ? "inline-block" : "none";
     showPage("page-main");
-    showSection("dashboard");
-    await loadDashboard();
+    showSection("home");
+    loadStats();
+    loadHomeHistory();
+    loadHomeLeaderboard();
   } else {
     currentUser = null;
     showPage("page-auth");
   }
 });
 
-// ─── REGISTRERING ─────────────────────────────────────────
-window.registerUser = async () => {
+// ─── AUTH ─────────────────────────────────────────────────
+window.switchAuth = (tab, btn) => {
+  document.querySelectorAll(".auth-tab").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById("auth-login").style.display = tab === "login" ? "flex" : "none";
+  document.getElementById("auth-register").style.display = tab === "register" ? "flex" : "none";
+  document.getElementById("login-error").textContent = "";
+  document.getElementById("reg-error").textContent = "";
+};
+
+window.doRegister = async () => {
   const name = document.getElementById("reg-name").value.trim();
   const email = document.getElementById("reg-email").value.trim();
   const password = document.getElementById("reg-password").value;
-  const errEl = document.getElementById("reg-error");
-  errEl.textContent = "";
-
-  if (!name || !email || !password) {
-    errEl.textContent = "Fyll i alla fält."; return;
-  }
-  if (password.length < 6) {
-    errEl.textContent = "Lösenordet måste vara minst 6 tecken."; return;
-  }
-
+  const err = document.getElementById("reg-error");
+  err.textContent = "";
+  if (!name || !email || !password) { err.textContent = "Fyll i alla fält."; return; }
+  if (password.length < 6) { err.textContent = "Lösenordet måste vara minst 6 tecken."; return; }
   try {
+    const usersSnap = await getDocs(collection(db, "users"));
+    const isFirst = usersSnap.empty;
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: name });
-    // Spara spelarinfo i Firestore
     await setDoc(doc(db, "users", cred.user.uid), {
-      name,
-      email,
-      createdAt: serverTimestamp(),
-      totalMinutes: 0,
-      totalSessions: 0
+      name, email, role: isFirst ? "admin" : "player",
+      totalMinutes: 0, totalSessions: 0, createdAt: serverTimestamp()
     });
-  } catch (e) {
-    errEl.textContent = firebaseError(e.code);
-  }
+  } catch (e) { err.textContent = firebaseError(e.code); }
 };
 
-// ─── INLOGGNING ───────────────────────────────────────────
-window.loginUser = async () => {
+window.doLogin = async () => {
   const email = document.getElementById("login-email").value.trim();
   const password = document.getElementById("login-password").value;
-  const errEl = document.getElementById("login-error");
-  errEl.textContent = "";
-
-  if (!email || !password) {
-    errEl.textContent = "Fyll i e-post och lösenord."; return;
-  }
-
+  const err = document.getElementById("login-error");
+  err.textContent = "";
+  if (!email || !password) { err.textContent = "Fyll i e-post och lösenord."; return; }
   try {
     await signInWithEmailAndPassword(auth, email, password);
-  } catch (e) {
-    errEl.textContent = firebaseError(e.code);
-  }
+  } catch (e) { err.textContent = firebaseError(e.code); }
 };
 
-// ─── UTLOGGNING ───────────────────────────────────────────
-window.logoutUser = async () => {
-  await signOut(auth);
+window.doLogout = async () => { await signOut(auth); };
+
+// ─── SKAPA SPELARE (ADMIN) ────────────────────────────────
+window.createPlayer = async () => {
+  const name = document.getElementById("new-name").value.trim();
+  const email = document.getElementById("new-email").value.trim();
+  const password = document.getElementById("new-password").value.trim();
+  const role = document.getElementById("new-role").value;
+  const err = document.getElementById("new-error");
+  const succ = document.getElementById("new-success");
+  err.textContent = ""; succ.textContent = "";
+  if (!name || !email || !password) { err.textContent = "Fyll i alla fält."; return; }
+  if (password.length < 4) { err.textContent = "Lösenordet måste vara minst 4 tecken."; return; }
+  try {
+    const tempAuth = getAuth(initializeApp(firebaseConfig, "temp-" + Date.now()));
+    const cred = await createUserWithEmailAndPassword(tempAuth, email, password);
+    await updateProfile(cred.user, { displayName: name });
+    await setDoc(doc(db, "users", cred.user.uid), {
+      name, email, role, totalMinutes: 0, totalSessions: 0, createdAt: serverTimestamp()
+    });
+    await signOut(tempAuth);
+    succ.textContent = `✓ ${name} har skapats!`;
+    document.getElementById("new-name").value = "";
+    document.getElementById("new-email").value = "";
+    document.getElementById("new-password").value = "";
+    setTimeout(() => { succ.textContent = ""; }, 3000);
+    loadPlayersList();
+  } catch (e) { err.textContent = firebaseError(e.code); }
 };
 
-// ─── SPARA TRÄNING ────────────────────────────────────────
+// ─── LOGGA TRÄNING ────────────────────────────────────────
 window.saveSession = async () => {
   const date = document.getElementById("log-date").value;
   const type = document.getElementById("log-type").value;
   const minutes = parseInt(document.getElementById("log-minutes").value);
   const notes = document.getElementById("log-notes").value.trim();
-  const successEl = document.getElementById("log-success");
-  const errEl = document.getElementById("log-error");
-  successEl.textContent = "";
-  errEl.textContent = "";
-
-  if (!date) { errEl.textContent = "Välj ett datum."; return; }
-  if (!minutes || minutes < 1) { errEl.textContent = "Ange antal minuter."; return; }
-
+  const succ = document.getElementById("log-success");
+  const err = document.getElementById("log-error");
+  succ.textContent = ""; err.textContent = "";
+  if (!date) { err.textContent = "Välj ett datum."; return; }
+  if (!minutes || minutes < 1) { err.textContent = "Ange antal minuter."; return; }
   try {
     await addDoc(collection(db, "sessions"), {
-      userId: currentUser.uid,
-      userName: currentUser.displayName || currentUser.email,
-      date,
-      type,
-      minutes,
-      notes,
-      createdAt: serverTimestamp()
+      userId: currentUser.uid, userName: currentUser.name,
+      date, type, minutes, notes, createdAt: serverTimestamp()
     });
-
-    // Uppdatera användarens totaler
     const userRef = doc(db, "users", currentUser.uid);
-    const userSnap = await getDoc(userRef);
-    if (userSnap.exists()) {
-      const data = userSnap.data();
-      await setDoc(userRef, {
-        ...data,
-        totalMinutes: (data.totalMinutes || 0) + minutes,
-        totalSessions: (data.totalSessions || 0) + 1
-      });
-    }
-
-    successEl.textContent = "✅ Träning sparad!";
+    const snap = await getDoc(userRef);
+    const data = snap.data();
+    await setDoc(userRef, {
+      ...data,
+      totalMinutes: (data.totalMinutes || 0) + minutes,
+      totalSessions: (data.totalSessions || 0) + 1
+    });
+    currentUser.totalMinutes = (currentUser.totalMinutes || 0) + minutes;
+    currentUser.totalSessions = (currentUser.totalSessions || 0) + 1;
+    succ.textContent = "✓ Träning sparad!";
     document.getElementById("log-minutes").value = "";
     document.getElementById("log-notes").value = "";
-    document.getElementById("log-date").value = "";
-
-    setTimeout(() => { successEl.textContent = ""; }, 3000);
-    await loadDashboard();
-  } catch (e) {
-    errEl.textContent = "Kunde inte spara: " + e.message;
-  }
+    setTimeout(() => { succ.textContent = ""; }, 3000);
+    loadStats();
+    loadHomeHistory();
+  } catch (e) { err.textContent = "Kunde inte spara: " + e.message; }
 };
 
-// ─── LADDA DASHBOARD ──────────────────────────────────────
-async function loadDashboard() {
-  try {
-    const q = query(
-      collection(db, "sessions"),
-      where("userId", "==", currentUser.uid),
-      orderBy("date", "desc")
-    );
-    const snap = await getDocs(q);
-    const sessions = snap.docs.map(d => d.data());
-
-    const totalMinutes = sessions.reduce((s, x) => s + x.minutes, 0);
-    const totalSessions = sessions.length;
-
-    // Beräkna streak (dagar i rad)
-    const streak = calcStreak(sessions);
-
-    document.getElementById("stat-sessions").textContent = totalSessions;
-    document.getElementById("stat-minutes").textContent = totalMinutes;
-    document.getElementById("stat-streak").textContent = streak;
-  } catch (e) {
-    console.error("Dashboard error:", e);
-  }
-}
-
-// ─── LADDA HISTORIK ───────────────────────────────────────
-async function loadHistory() {
-  const list = document.getElementById("history-list");
-  list.innerHTML = "<p class='empty-state'>Laddar...</p>";
-
-  try {
-    const q = query(
-      collection(db, "sessions"),
-      where("userId", "==", currentUser.uid),
-      orderBy("date", "desc")
-    );
-    const snap = await getDocs(q);
-
-    if (snap.empty) {
-      list.innerHTML = "<p class='empty-state'>Inga träningar loggade ännu. Lägg till din första träning! 🏀</p>";
-      return;
-    }
-
-    list.innerHTML = "";
-    snap.docs.forEach(docSnap => {
-      const s = docSnap.data();
-      const item = document.createElement("div");
-      item.className = "history-item";
-      item.innerHTML = `
-        <div class="history-icon">${typeIcon(s.type)}</div>
-        <div class="history-info">
-          <div class="history-type">${s.type}</div>
-          <div class="history-date">${formatDate(s.date)}</div>
-          ${s.notes ? `<div class="history-notes">${s.notes}</div>` : ""}
-        </div>
-        <div class="history-minutes">${s.minutes}<span>min</span></div>
-      `;
-      list.appendChild(item);
-    });
-  } catch (e) {
-    list.innerHTML = "<p class='empty-state'>Kunde inte ladda historik.</p>";
-  }
-}
-
-// ─── LADDA TOPPLISTA ──────────────────────────────────────
-async function loadLeaderboard() {
-  const list = document.getElementById("leaderboard-list");
-  list.innerHTML = "<p class='empty-state'>Laddar...</p>";
-
-  try {
-    const snap = await getDocs(collection(db, "users"));
-    const users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    users.sort((a, b) => (b.totalMinutes || 0) - (a.totalMinutes || 0));
-
-    if (users.length === 0) {
-      list.innerHTML = "<p class='empty-state'>Inga spelare ännu.</p>";
-      return;
-    }
-
-    list.innerHTML = "";
-    users.forEach((u, i) => {
-      const rank = i + 1;
-      const isMe = u.id === currentUser.uid;
-      const rankEmoji = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `${rank}.`;
-      const cls = rank === 1 ? "top-1" : rank === 2 ? "top-2" : rank === 3 ? "top-3" : "";
-      const item = document.createElement("div");
-      item.className = `leaderboard-item ${cls} ${isMe ? "me" : ""}`;
-      item.innerHTML = `
-        <div class="lb-rank">${rankEmoji}</div>
-        <div class="lb-info" style="flex:1">
-          <div class="lb-name">${u.name || u.email}${isMe ? " (du)" : ""}</div>
-          <div class="lb-sessions">${u.totalSessions || 0} pass</div>
-        </div>
-        <div class="lb-minutes">${u.totalMinutes || 0}<span>minuter</span></div>
-      `;
-      list.appendChild(item);
-    });
-  } catch (e) {
-    list.innerHTML = "<p class='empty-state'>Kunde inte ladda topplistan.</p>";
-  }
-}
-
-// ─── HJÄLPFUNKTIONER ──────────────────────────────────────
-window.showSection = (id) => {
-  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
-  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-  document.getElementById("section-" + id).classList.add("active");
-  const btns = document.querySelectorAll(".nav-btn");
-  btns.forEach(b => { if (b.getAttribute("onclick")?.includes(id)) b.classList.add("active"); });
-
-  if (id === "history") loadHistory();
-  if (id === "leaderboard") loadLeaderboard();
-  if (id === "log") {
-    // Sätt dagens datum som default
-    const today = new Date().toISOString().split("T")[0];
-    document.getElementById("log-date").value = today;
-  }
-};
-
-window.switchTab = (tab) => {
-  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-  document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
-  document.querySelector(`.tab[onclick="switchTab('${tab}')"]`).classList.add("active");
-  document.getElementById("tab-" + tab).classList.add("active");
-};
-
-function showPage(id) {
-  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
-  document.getElementById(id).classList.add("active");
-}
-
-function typeIcon(type) {
-  const icons = {
-    "Skottträning": "🏀", "Dribbling": "⚡", "Kondition": "🏃",
-    "Styrketräning": "💪", "Lagträning": "👥", "Match": "🏆", "Övrigt": "📋"
-  };
-  return icons[type] || "🏀";
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return "";
-  const [y, m, d] = dateStr.split("-");
-  return `${d}/${m}/${y}`;
-}
-
-function calcStreak(sessions) {
-  if (!sessions.length) return 0;
+// ─── LOAD FUNCTIONS ───────────────────────────────────────
+async function loadStats() {
+  const q = query(collection(db, "sessions"), where("userId", "==", currentUser.uid));
+  const snap = await getDocs(q);
+  const sessions = snap.docs.map(d => d.data());
+  document.getElementById("stat-sessions").textContent = sessions.length;
+  document.getElementById("stat-minutes").textContent = sessions.reduce((a, s) => a + s.minutes, 0);
   const dates = [...new Set(sessions.map(s => s.date))].sort().reverse();
-  let streak = 0;
-  let current = new Date();
-  current.setHours(0, 0, 0, 0);
-
-  for (const dateStr of dates) {
-    const d = new Date(dateStr);
-    const diff = Math.round((current - d) / (1000 * 60 * 60 * 24));
-    if (diff <= 1) { streak++; current = d; }
-    else break;
+  let streak = 0, cur = new Date(); cur.setHours(0, 0, 0, 0);
+  for (const d of dates) {
+    const diff = Math.round((cur - new Date(d)) / 86400000);
+    if (diff <= 1) { streak++; cur = new Date(d); } else break;
   }
-  return streak;
+  document.getElementById("stat-streak").textContent = streak;
+}
+
+async function loadHomeHistory() {
+  const q = query(collection(db, "sessions"), where("userId", "==", currentUser.uid), orderBy("date", "desc"));
+  const snap = await getDocs(q);
+  const sessions = snap.docs.map(d => d.data()).slice(0, 3);
+  const el = document.getElementById("home-history");
+  if (!sessions.length) { el.innerHTML = '<p style="color:#666;font-size:14px;">Inga träningar ännu.</p>'; return; }
+  el.innerHTML = sessions.map(s => historyRow(s)).join("");
+}
+
+async function loadHomeLeaderboard() {
+  const snap = await getDocs(collection(db, "users"));
+  const users = snap.docs.map(d => ({ uid: d.id, ...d.data() })).sort((a, b) => (b.totalMinutes || 0) - (a.totalMinutes || 0)).slice(0, 4);
+  document.getElementById("home-leaderboard").innerHTML = lbRows(users);
+}
+
+async function loadFullHistory() {
+  const q = query(collection(db, "sessions"), where("userId", "==", currentUser.uid), orderBy("date", "desc"));
+  const snap = await getDocs(q);
+  const sessions = snap.docs.map(d => d.data());
+  const el = document.getElementById("history-list");
+  if (!sessions.length) { el.innerHTML = '<p style="color:#666;font-size:14px;">Inga träningar loggade ännu.</p>'; return; }
+  el.innerHTML = sessions.map(s => historyRow(s)).join("");
+}
+
+async function loadFullLeaderboard() {
+  const snap = await getDocs(collection(db, "users"));
+  const users = snap.docs.map(d => ({ uid: d.id, ...d.data() })).sort((a, b) => (b.totalMinutes || 0) - (a.totalMinutes || 0));
+  document.getElementById("full-leaderboard").innerHTML = lbRows(users);
+}
+
+async function loadPlayersList() {
+  const snap = await getDocs(collection(db, "users"));
+  const users = snap.docs.map(d => ({ uid: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
+  const el = document.getElementById("players-list");
+  if (!users.length) { el.innerHTML = '<p style="color:#666;font-size:14px;">Inga spelare ännu.</p>'; return; }
+  el.innerHTML = users.map(u => `
+    <div class="player-row">
+      <div class="player-avatar">${u.name.charAt(0).toUpperCase()}</div>
+      <div class="player-info">
+        <div class="player-name">${u.name}${u.role === "admin" ? '<span class="admin-badge">Admin</span>' : ''}</div>
+        <div class="player-email">${u.email}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="player-mins">${u.totalMinutes || 0} min</div>
+        <div class="player-sessions">${u.totalSessions || 0} pass</div>
+      </div>
+    </div>`).join("");
+}
+
+// ─── HELPERS ──────────────────────────────────────────────
+function historyRow(s) {
+  return `<div class="history-item">
+    <div class="badge">${s.type.split(" ")[1] || s.type}</div>
+    <div class="hi-info"><div class="hi-name">${s.type.substring(2)}</div><div class="hi-date">${fmt(s.date)}${s.notes ? " — " + s.notes : ""}</div></div>
+    <div><div class="hi-mins">${s.minutes}</div><div class="hi-mins-lbl">min</div></div>
+  </div>`;
+}
+
+function lbRows(users) {
+  const medals = ["🥇", "🥈", "🥉"];
+  if (!users.length) return '<div style="padding:16px;color:#666;font-size:13px;">Inga spelare ännu.</div>';
+  return users.map((u, i) => `
+    <div class="lb-row" ${u.uid === currentUser.uid ? 'style="background:#1a0508;"' : ''}>
+      <div class="lb-rank">${medals[i] || (i + 1) + "."}</div>
+      <div class="lb-info"><div class="lb-name">${u.name}${u.uid === currentUser.uid ? " (du)" : ""}</div><div class="lb-detail">${u.totalSessions || 0} pass</div></div>
+      <div style="text-align:right"><div class="lb-mins-num">${u.totalMinutes || 0}</div><div class="lb-mins-lbl">min</div></div>
+    </div>`).join("");
+}
+
+function fmt(d) {
+  if (!d) return "";
+  const [y, m, day] = d.split("-");
+  return `${day}/${m}/${y}`;
 }
 
 function firebaseError(code) {
@@ -328,4 +249,27 @@ function firebaseError(code) {
     "auth/too-many-requests": "För många försök. Försök igen senare."
   };
   return errors[code] || "Något gick fel. Försök igen.";
+}
+
+// ─── NAV ──────────────────────────────────────────────────
+window.switchMain = (id, btn) => {
+  document.querySelectorAll(".section-view").forEach(s => s.classList.remove("active"));
+  document.querySelectorAll(".nba-nav-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("main-" + id).classList.add("active");
+  btn.classList.add("active");
+  if (id === "historik") loadFullHistory();
+  if (id === "topplista") loadFullLeaderboard();
+  if (id === "admin") loadPlayersList();
+  if (id === "log") document.getElementById("log-date").value = new Date().toISOString().split("T")[0];
+};
+
+function showPage(id) {
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+function showSection(id) {
+  document.querySelectorAll(".section-view").forEach(s => s.classList.remove("active"));
+  document.getElementById("main-" + id).classList.add("active");
+  document.getElementById("log-date").value = new Date().toISOString().split("T")[0];
 }

@@ -3,151 +3,144 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Norrlandskol – Sommarträning 2026</title>
+  <title>Sommarträning 2026</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 
-  <!-- STARTSIDA / LOGIN -->
-  <div id="page-auth" class="page active">
-    <div class="auth-container">
-      <div class="logo-area">
-        <div class="ball-icon">🏀</div>
-        <h1>Norrlandskol</h1>
-        <p class="tagline">Sommarträning 2026</p>
+<div id="page-auth" class="page active">
+  <div class="auth-page">
+    <div class="auth-box">
+      <div class="auth-logo">
+        <div class="auth-logo-ball">🏀</div>
+        <div class="auth-logo-sub">Sommarträning 2026</div>
       </div>
-
-      <!-- Flikar -->
-      <div class="tabs">
-        <button class="tab active" onclick="switchTab('login')">Logga in</button>
-        <button class="tab" onclick="switchTab('register')">Registrera</button>
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="switchAuth('login',this)">Logga in</button>
+        <button class="auth-tab" onclick="switchAuth('register',this)">Registrera</button>
       </div>
-
-      <!-- Inloggning -->
-      <div id="tab-login" class="tab-content active">
-        <input type="email" id="login-email" placeholder="E-post" />
-        <input type="password" id="login-password" placeholder="Lösenord" />
-        <button class="btn-primary" onclick="loginUser()">Logga in</button>
+      <div id="auth-login" class="auth-form">
+        <input class="form-input" id="login-email" type="email" placeholder="E-post" />
+        <input class="form-input" id="login-password" type="password" placeholder="Lösenord" />
         <p id="login-error" class="error-msg"></p>
+        <button class="btn-red full" onclick="doLogin()">Logga in</button>
       </div>
-
-      <!-- Registrering -->
-      <div id="tab-register" class="tab-content">
-        <input type="text" id="reg-name" placeholder="Ditt namn" />
-        <input type="email" id="reg-email" placeholder="E-post" />
-        <input type="password" id="reg-password" placeholder="Lösenord (minst 6 tecken)" />
-        <button class="btn-primary" onclick="registerUser()">Skapa konto</button>
+      <div id="auth-register" class="auth-form" style="display:none;">
+        <input class="form-input" id="reg-name" type="text" placeholder="Ditt namn" />
+        <input class="form-input" id="reg-email" type="email" placeholder="E-post" />
+        <input class="form-input" id="reg-password" type="password" placeholder="Lösenord (minst 6 tecken)" />
         <p id="reg-error" class="error-msg"></p>
+        <button class="btn-red full" onclick="doRegister()">Skapa konto</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="page-main" class="page">
+  <nav class="nba-nav">
+    <div class="nba-logo">🏀</div>
+    <div class="nba-nav-links">
+      <button class="nba-nav-btn active" onclick="switchMain('home',this)">Hem</button>
+      <button class="nba-nav-btn" onclick="switchMain('log',this)">Logga</button>
+      <button class="nba-nav-btn" onclick="switchMain('historik',this)">Historik</button>
+      <button class="nba-nav-btn" onclick="switchMain('topplista',this)">Topplista</button>
+      <button class="nba-nav-btn" id="admin-nav-btn" style="display:none;" onclick="switchMain('admin',this)">Spelare</button>
+    </div>
+    <div class="nba-user">
+      <span class="nba-user-name" id="nav-username"></span>
+      <button class="nba-logout" onclick="doLogout()">Logga ut</button>
+    </div>
+  </nav>
+
+  <div id="main-home" class="section-view active">
+    <div class="hero">
+      <div style="font-size:48px;">🏀</div>
+      <div class="hero-text">
+        <h1>Välkommen, <span id="welcome-name"></span></h1>
+        <p>Sommarträning 2026 — Varje pass räknas</p>
+      </div>
+    </div>
+    <div class="stats-bar">
+      <div class="stat-item"><div class="stat-num" id="stat-sessions">0</div><div class="stat-lbl">Träningspass</div></div>
+      <div class="stat-item"><div class="stat-num" id="stat-minutes">0</div><div class="stat-lbl">Totala minuter</div></div>
+      <div class="stat-item"><div class="stat-num" id="stat-streak">0</div><div class="stat-lbl">Dagar i rad</div></div>
+    </div>
+    <div class="two-col">
+      <div>
+        <div class="section-title">Senaste träningar</div>
+        <div class="history-list" id="home-history"><p style="color:#666;font-size:14px;">Inga träningar ännu.</p></div>
+      </div>
+      <div>
+        <div class="section-title">Topplista</div>
+        <div class="lb-card">
+          <div class="lb-header"><div class="lb-header-title">Topplista</div><div class="lb-header-sub">Sommar 2026</div></div>
+          <div id="home-leaderboard"><div style="padding:16px;color:#666;font-size:13px;">Laddar...</div></div>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- HUVUDSIDA (efter inloggning) -->
-  <div id="page-main" class="page">
-
-    <!-- Navbar -->
-    <nav class="navbar">
-      <div class="nav-brand">🏀 Norrlandskol</div>
-      <div class="nav-links">
-        <button class="nav-btn active" onclick="showSection('dashboard')">Hem</button>
-        <button class="nav-btn" onclick="showSection('log')">Logga träning</button>
-        <button class="nav-btn" onclick="showSection('history')">Min historik</button>
-        <button class="nav-btn" onclick="showSection('leaderboard')">Topplista</button>
-      </div>
-      <div class="nav-user">
-        <span id="nav-username"></span>
-        <button class="btn-logout" onclick="logoutUser()">Logga ut</button>
-      </div>
-    </nav>
-
-    <!-- DASHBOARD -->
-    <section id="section-dashboard" class="section active">
-      <div class="container">
-        <div class="welcome-card">
-          <h2>Välkommen, <span id="welcome-name"></span>! 👋</h2>
-          <p>Fortsätt träna hårt i sommar. Varje pass räknas!</p>
-        </div>
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-number" id="stat-sessions">0</div>
-            <div class="stat-label">Träningspass</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-number" id="stat-minutes">0</div>
-            <div class="stat-label">Totala minuter</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-number" id="stat-streak">0</div>
-            <div class="stat-label">Dagar i rad</div>
-          </div>
-        </div>
-        <div class="quick-log">
-          <h3>Snabblogga dagens träning</h3>
-          <button class="btn-primary" onclick="showSection('log')">+ Lägg till träning</button>
+  <div id="main-log" class="section-view" style="padding:24px;">
+    <div class="section-title">Logga träning</div>
+    <div class="card" style="max-width:560px;">
+      <div class="form-row">
+        <div class="form-group" style="margin:0;"><label class="form-label">Datum</label><input type="date" class="form-input" id="log-date" /></div>
+        <div class="form-group" style="margin:0;"><label class="form-label">Typ</label>
+          <select class="form-input" id="log-type">
+            <option>🏀 Skottträning</option><option>⚡ Dribbling</option><option>🏃 Kondition</option>
+            <option>💪 Styrketräning</option><option>👥 Lagträning</option><option>🏆 Match</option><option>📋 Övrigt</option>
+          </select>
         </div>
       </div>
-    </section>
-
-    <!-- LOGGA TRÄNING -->
-    <section id="section-log" class="section">
-      <div class="container">
-        <h2>Logga träning</h2>
-        <div class="log-card">
-          <div class="form-group">
-            <label>Datum</label>
-            <input type="date" id="log-date" />
-          </div>
-          <div class="form-group">
-            <label>Typ av träning</label>
-            <select id="log-type">
-              <option value="Skottträning">🏀 Skottträning</option>
-              <option value="Dribbling">⚡ Dribbling</option>
-              <option value="Kondition">🏃 Kondition</option>
-              <option value="Styrketräning">💪 Styrketräning</option>
-              <option value="Lagträning">👥 Lagträning</option>
-              <option value="Match">🏆 Match</option>
-              <option value="Övrigt">📋 Övrigt</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Antal minuter</label>
-            <input type="number" id="log-minutes" placeholder="t.ex. 60" min="1" max="480" />
-          </div>
-          <div class="form-group">
-            <label>Anteckningar (valfritt)</label>
-            <textarea id="log-notes" placeholder="Vad tränade du på? Hur kändes det?"></textarea>
-          </div>
-          <button class="btn-primary" onclick="saveSession()">💾 Spara träning</button>
-          <p id="log-success" class="success-msg"></p>
-          <p id="log-error" class="error-msg"></p>
-        </div>
-      </div>
-    </section>
-
-    <!-- MIN HISTORIK -->
-    <section id="section-history" class="section">
-      <div class="container">
-        <h2>Min träningshistorik</h2>
-        <div id="history-list" class="history-list">
-          <p class="empty-state">Laddar träningar...</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- TOPPLISTA -->
-    <section id="section-leaderboard" class="section">
-      <div class="container">
-        <h2>🏆 Topplista – Sommar 2026</h2>
-        <p class="leaderboard-desc">Rankad efter totalt antal träningsminuter</p>
-        <div id="leaderboard-list" class="leaderboard-list">
-          <p class="empty-state">Laddar topplista...</p>
-        </div>
-      </div>
-    </section>
-
+      <div class="form-group"><label class="form-label">Antal minuter</label><input type="number" class="form-input" id="log-minutes" placeholder="t.ex. 60" min="1" /></div>
+      <div class="form-group"><label class="form-label">Anteckningar (valfritt)</label><textarea class="form-input" id="log-notes" placeholder="Hur gick det?"></textarea></div>
+      <p id="log-success" class="success-msg"></p>
+      <p id="log-error" class="error-msg"></p>
+      <button class="btn-red full" onclick="saveSession()">Spara träning</button>
+    </div>
   </div>
 
-  <!-- Firebase -->
-  <script type="module" src="js/app.js"></script>
+  <div id="main-historik" class="section-view" style="padding:24px;">
+    <div class="section-title">Min träningshistorik</div>
+    <div class="history-list" id="history-list"><p style="color:#666;font-size:14px;">Laddar...</p></div>
+  </div>
+
+  <div id="main-topplista" class="section-view" style="padding:24px;">
+    <div class="section-title">Topplista — Sommar 2026</div>
+    <div class="lb-card" style="max-width:560px;">
+      <div class="lb-header"><div class="lb-header-title">Topplista</div><div class="lb-header-sub">Rankad på totala minuter</div></div>
+      <div id="full-leaderboard"></div>
+    </div>
+  </div>
+
+  <div id="main-admin" class="section-view" style="padding:24px;">
+    <div style="display:grid; grid-template-columns:1fr 360px; gap:24px;">
+      <div>
+        <div class="section-title">Alla spelare</div>
+        <div class="players-list" id="players-list"></div>
+      </div>
+      <div>
+        <div class="section-title">Skapa ny spelare</div>
+        <div class="card">
+          <div class="form-group"><label class="form-label">Namn</label><input class="form-input" id="new-name" type="text" placeholder="Spelarens namn" /></div>
+          <div class="form-group"><label class="form-label">E-post</label><input class="form-input" id="new-email" type="email" placeholder="spelare@exempel.se" /></div>
+          <div class="form-group"><label class="form-label">Lösenord</label><input class="form-input" id="new-password" type="text" placeholder="Välj ett lösenord" /></div>
+          <div class="form-group">
+            <label class="form-label">Roll</label>
+            <select class="form-input" id="new-role">
+              <option value="player">Spelare</option>
+              <option value="admin">Tränare / Admin</option>
+            </select>
+          </div>
+          <p id="new-error" class="error-msg"></p>
+          <p id="new-success" class="success-msg"></p>
+          <button class="btn-red full" onclick="createPlayer()">Skapa konto</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
 </body>
 </html>
